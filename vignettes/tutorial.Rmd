@@ -87,9 +87,12 @@ The importance of these quantities is perhaps most apparent in understanding fin
 
 ### Getting started
 
-`terravars` is built around the `terra` package for raster data handling, so `terra` objects (`SpatRaster`) are the expected input and output format throughout this tutorial. Install and load both packages, along with `terravars`' own bundled example data:
+`terravars` is built around the `terra` package for raster data handling, so `terra` objects (`SpatRaster`) are the expected input and output format throughout this tutorial. `terravars` isn't on CRAN yet; install it directly from its [GitHub repository](https://github.com/ilyamaclean/terravars) using `remotes` (or `devtools`), then load it alongside `terra`:
 
 ```{r, message = FALSE}
+# install.packages("remotes")
+remotes::install_github("ilyamaclean/terravars")
+
 library(terra)
 library(terravars)
 ```
@@ -297,7 +300,6 @@ ts <- twostream(dtm, pai, tme, x = vgx)
 plot(ts, main = c("fdirdown", "fdifdown", "fdirscat"))
 ```
 ![](images/twostream_img1.png)
-
 Each output layer contains a fraction between 0 and 1. The total shortwave radiation reaching the ground can therefore be calculated from the above-canopy direct (`swdir`) and diffuse (`swdif`) radiation as:
 
 ```{r}
@@ -456,6 +458,14 @@ The `meas_hgt` argument specifies the height above ground to which the wind spee
 wa_10m <- wind_altitude(dtm, meas_hgt = 10)
 ```
 
+Because `wind_shelter()` and `wind_altitude()` describe different processes, they are intended to be used together. Multiplying the two coefficients produces a single terrain-based adjustment that accounts for both directional shelter and topographic exposure.
+
+```{r}
+downscale_coef <- wa * ws[["wind_shelter_270"]]
+plot(downscale_coef, main = "Combined wind downscaling coefficient (westerly)")
+```
+![](images/wind_altitude_img2.png)
+
 ## Coastal exposure
 
 Topography is not the only control on local climate. Near the coast, the sea moderates local temperatures, reducing temperature extremes and increasing humidity. The strength of this maritime influence depends on how much open water lies upwind of a location. `coastalexposure()` quantifies this by estimating the proportion of land and sea encountered along the upwind fetch. The resulting coastal exposure index provides a simple measure of maritime influence that can be used as a predictor of land–sea temperature gradients.
@@ -588,45 +598,40 @@ Three formulations are available via `method`: `"standard"`, the classical defin
 
 ## Data download
 
-Every example so far has used the bundled Lizard Peninsula data. For a new area, `dem_download()` and `landcover_download()` fetch a digital terrain model and land-cover classification directly from public data sources, with no account, API key or additional packages required beyond `terravars` itself.
+Every example so far has used the bundled Lizard peninsula data. For a new area, `dem_download()` and `landcover_download()` fetch a digital terrain model and a land-cover classification directly from public data sources, with no account, API key, or extra package required beyond `terravars` itself.
 
 ### Downloading land cover
 
-`landcover_download()` fetches ESA WorldCover, a global 10 m resolution land-cover classification, and resamples it onto the grid of a template raster:
+`landcover_download()` fetches ESA WorldCover, a global 10 m resolution land-cover classification, matched to a template raster's own grid:
 
 ```{r}
-lc <- landcover_download(dtm)
+lc <- landcover_download(dtm)   # watersplit = TRUE by default
 plot(lc, main = "Downloaded land cover")
 ```
-![](images/download_img1.png)
 
-Because land cover is categorical rather than continuous, resampling uses the modal (most common) class within each output cell rather than interpolation. ESA WorldCover does not distinguish between the sea and inland water bodies, assigning both to class `80` ("Permanent water bodies"). By default (`watersplit = TRUE`), `landcover_download()` separates these after download: any connected water body that reaches the edge of the requested area is assumed to connect to the sea beyond it and remains class `80`, whereas enclosed water bodies are reclassified as `81` (freshwater). Setting `watersplit = FALSE` retains ESA WorldCover's original classification, with all water assigned to class `80`:
+Categorical data like this is resampled onto the template grid using the modal ("most common") value in each output cell, rather than the interpolation used for continuous elevation data. ESA WorldCover's own classification doesn't distinguish sea from a large inland lake or river - both are class `80`, "Permanent water bodies". By default (`watersplit = TRUE`), `landcover_download()` splits this after fetching: any connected water body that touches the edge of the requested area is presumed connected to open water beyond it and kept as `80` (sea), while a water body fully enclosed within the interior becomes `81` (freshwater) instead. Setting `watersplit = FALSE` instead keeps ESA's original, undivided code `80` for all water:
 
 ```{r}
 lc_raw <- landcover_download(dtm, watersplit = FALSE)
 plot(c(lc, lc_raw), main = c("watersplit = TRUE", "watersplit = FALSE"), mar = c(2, 2, 2, 5))
 ```
-![](images/download_img2.png)
 
-With `watersplit = TRUE`, sea (`80`) and freshwater (`81`) are shown as separate classes. With `watersplit = FALSE`, all water bodies retain the original class `80`.
+With `watersplit = TRUE`, sea (`80`) and freshwater (`81`) show as two distinct classes; with `watersplit = FALSE`, every water body - sea or freshwater alike - is left as the single class `80`.
 
 ### Downloading a DTM
 
-`dem_download()` fetches elevation data from the AWS Terrain Tiles dataset. A template `SpatRaster` defines the extent, resolution and coordinate reference system of the returned raster.
+`dem_download()` takes a `SpatRaster` as a template - its extent, resolution and coordinate reference system define exactly what gets returned - and fetches elevation data to match, from the AWS "Terrain Tiles" public dataset.
 
 ```{r}
 dtm_new <- dem_download(dtm)
 plot(dtm_new, main = "Downloaded DTM")
 ```
-![](images/download_img3.png)
 
-The Terrain Tiles dataset combines terrestrial elevation with bathymetry, the latter generally being available at a coarser resolution. This can produce unrealistic elevations along coastlines. Rather than fetching a land/sea mask internally, `dem_download()` accepts any raster on the same grid via the `mask` argument. Cells whose values match `mask_value` are masked in the returned DTM, with `mask_out` controlling whether they are returned as `NA` (the default) or `0` (sea level).
-
-The land-cover raster downloaded above is a natural choice. Using `mask_value = 80` masks only the sea, leaving inland lakes and rivers untouched:
+The elevation data available from this source blends true land elevation with bathymetry, the latter generally at coarser resolution, which can produce oddities right at the coast. `dem_download()` doesn't fetch a land/sea mask itself; instead, its `mask` argument accepts any raster on the same grid to mask cells out of the result, with `mask_value` controlling which value(s) count as "mask this out" and `mask_out` controlling whether masked cells come back as `NA` (the default) or `0` (sea level). The land cover fetched above is a natural fit here - using `mask_value = 80` masks out the sea specifically, leaving any lake or river in the area untouched:
 
 ```{r}
 dtm_clean <- dem_download(dtm, mask = lc, mask_value = 80)
 plot(dtm_clean, main = "Downloaded DTM, sea masked out")
 ```
-![](images/download_img4.png)
-Passing `mask_value = c(80, 81)` instead masks all water. Because the AWS Terrain Tiles dataset blends terrestrial elevation with coarser bathymetry, coastal land cells are often assigned elevations below sea level. Whenever a mask is supplied, `dem_download()` automatically clamps these coastal cells to 0. As an additional safeguard, setting `belowsea = FALSE` clamps all cells in the downloaded DTM so that no elevation falls below zero.
+
+Passing `mask_value = c(80, 81)` instead masks out all water, matching ESA WorldCover's original, undivided class `80`. Keeping `mask` as a separate argument rather than fetching land cover internally means the same `lc` fetched above can be reused across as many `dem_download()` calls as needed, rather than repeating the fetch every time.

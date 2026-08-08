@@ -605,7 +605,7 @@ points(pt, pch = 21, bg = "red")
 
 ![](images/water_img7.png)
 
-By default `(route = "steepest")`, `flowpath()` follows a single route one cell at a time, always moving to the neighbouring cell with the steepest downhill gradient (or, when `out = "upstream"`, the steepest uphill gradient). Tracing stops when it reaches a pit or ridge, the edge of the DTM, or an NA cell. The default `out = "downstream"` traces the path that water from the chosen location would follow, whereas `out = "upstream"` traces the route by which water could have reached that point. The neighbourhood searched at each step is controlled by the method argument, as in `flowacc(): "d8"` (the default) considers all eight neighbouring cells, whereas `"d4"` restricts the search to the four orthogonal neighbours.
+By default `(route = "steepest")`, `flowpath()` follows a single route one cell at a time, always moving to the neighbouring cell with the steepest downhill gradient (or, when `out = "upstream"`, the steepest uphill gradient). Tracing stops when it reaches a pit or ridge, the edge of the DTM, or an NA cell. The default `out = "downstream"` traces the path that water from the chosen location would follow, whereas `out = "upstream"` traces the route by which water could have reached that point. The neighbourhood searched at each step is controlled by the `method` argument, as in `flowacc()`: `"d8"` (the default) considers all eight neighbouring cells, whereas `"d4"` restricts the search to the four orthogonal neighbours.
 
 A single flow line is not always the most informative result, however, particularly when tracing upstream, where the contributing area is often of greater interest than any one route. Setting `route = "mfd"` distributes flow among all valid neighbouring cells, with weights proportional to slope using the same multiple-flow-direction algorithm as `flowacc(method = "mfd")`.
 
@@ -625,6 +625,20 @@ points(pt, pch = 21, bg = "red")
 `out = "downstream"` now shows how the point's own water diffuses outward and downhill, while `out = "upstream"` shows the full upslope contributing area, graded by how much of each individual cell's own water actually reaches the point, rather than the single representative line traced above. This graded version of `out = "upstream"` is useful when the direction of interest runs that way - a pollutant turns up at a monitoring point, say, and the question is which part of the catchment it plausibly came from, and how strongly, rather than simply which cells lie somewhere upslope.
 
 `xy` is treated as sitting at the centre of a small water body rather than a single infinitely small point: by default, any DTM cell immediately adjacent to it at exactly the same elevation is included as well (`flat_source = TRUE`). Where a real water body is known, it can be supplied directly instead via `waterbody` (and `water_value`, following the same convention as `fillsinks()`'s own arguments above), so that the whole feature - not just an approximation from the DTM's own flat patches - is used as the starting point.
+
+The bundled `landcover` data (already loaded as `lcov` in the [Preparing a DTM for hydrological analysis] section, where classes 13 and 14 represent Saltwater and Freshwater) makes this straightforward to demonstrate on an actual lake:
+
+```{r}
+xy_lake <- c(164850, 24850)
+fp_lake <- flowpath(dtm_filled, xy = xy_lake, waterbody = lcov, water_value = c(13, 14),
+                     route = "mfd", out = "upstream")
+plot(fp_lake, col = rev(map.pal("viridis")), main = "Catchment of a real lake")
+points(vect(matrix(xy_lake, ncol = 2), crs = crs(dtm_filled)), pch = 21, bg = "red")
+```
+
+![](images/water_img8.png)
+
+`xy_lake` here is simply a point somewhere within the lake. Left at its default, `flat_source` would only have picked up the handful of cells immediately touching that point at the same elevation; supplying `waterbody` instead identifies the lake's full extent from `landcover` (55 cells, in this case) and uses all of it as the source, so the catchment traced upstream is the one draining into the lake as a whole rather than into one arbitrary cell within it.
 
 ### Topographic wetness index
 

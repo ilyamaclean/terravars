@@ -586,7 +586,8 @@ Flow accumulation usually spans several orders of magnitude, so plotting on a lo
 
 ### Tracing a flow path
 
-`flowacc()` and the basin functions above describe the whole DTM at once. Sometimes the question is narrower than that: given a single point, where does the water there go, or where could it have come from? `flowpath()` answers this by tracing outward from one location rather than summarising the whole raster.
+`flowacc()` and the basin functions described above summarise flow patterns across an entire DTM. Sometimes, however, the question is more specific: given a single location, where does the water flow, or where could it have come from? `flowpath()` answers this by tracing the flow from a single point rather than analysing the whole raster.
+
 
 ```{r}
 xy <- c(168750, 15050)
@@ -604,9 +605,9 @@ points(pt, pch = 21, bg = "red")
 
 ![](images/water_img7.png)
 
-By default (`route = "steepest"`), a single line is traced one step at a time, always moving to whichever neighbour is the steepest way down (or, for `out = "upstream"`, used above, the steepest way up), and stopping at a pit or ridge, the edge of the DTM, or an `NA` cell. `out = "downstream"` (the default direction, also shown above) traces where the point's own water goes; `out = "upstream"` instead traces where it could have come from. The neighbourhood searched at each step follows the same `method` argument as `flowacc()`: `"d8"` (the default) considers all 8 surrounding cells, while `"d4"` restricts the search to the 4 orthogonal neighbours only.
+By default `(route = "steepest")`, `flowpath()` follows a single route one cell at a time, always moving to the neighbouring cell with the steepest downhill gradient (or, when `out = "upstream"`, the steepest uphill gradient). Tracing stops when it reaches a pit or ridge, the edge of the DTM, or an NA cell. The default `out = "downstream"` traces the path that water from the chosen location would follow, whereas `out = "upstream"` traces the route by which water could have reached that point. The neighbourhood searched at each step is controlled by the method argument, as in `flowacc(): "d8"` (the default) considers all eight neighbouring cells, whereas `"d4"` restricts the search to the four orthogonal neighbours.
 
-A single traced line is not always the most useful answer, however - particularly upstream, where a whole area rather than one line is often what's actually wanted. Setting `route = "mfd"` spreads the water across every valid neighbour at once instead of committing to a single line, weighted by slope in the same way as `flowacc()`'s own `method = "mfd"`:
+A single flow line is not always the most informative result, however, particularly when tracing upstream, where the contributing area is often of greater interest than any one route. Setting `route = "mfd"` distributes flow among all valid neighbouring cells, with weights proportional to slope using the same multiple-flow-direction algorithm as `flowacc(method = "mfd")`.
 
 ```{r}
 fp_down_mfd <- flowpath(dtm_filled, xy = xy, route = "mfd")

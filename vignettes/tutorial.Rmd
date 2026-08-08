@@ -622,11 +622,12 @@ points(pt, pch = 21, bg = "red")
 
 ![](images/water_img6.png)
 
-`out = "downstream"` now shows how the point's own water diffuses outward and downhill, while `out = "upstream"` shows the full upslope contributing area, graded by how much of each individual cell's own water actually reaches the point, rather than the single representative line traced above. This graded version of `out = "upstream"` is useful when the direction of interest runs that way - a pollutant turns up at a monitoring point, say, and the question is which part of the catchment it plausibly came from, and how strongly, rather than simply which cells lie somewhere upslope.
+`out = "downstream"` now shows how water from the selected point diffuses outward and downhill, while `out = "upstream"` shows the full upslope contributing area, graded according to how much of each cell's own water reaches the selected point, rather than tracing only the single representative flow path shown above. This graded upstream view is particularly useful when the question runs in the opposite direction—for example, when a pollutant is detected at a monitoring point and the aim is to identify which parts of the catchment could have contributed to it, and by how much, rather than simply which cells lie somewhere upslope.
 
-`xy` is treated as sitting at the centre of a small water body rather than a single infinitely small point: by default, any DTM cell immediately adjacent to it at exactly the same elevation is included as well (`flat_source = TRUE`). Where a real water body is known, it can be supplied directly instead via `waterbody` (and `water_value`, following the same convention as `fillsinks()`'s own arguments above), so that the whole feature - not just an approximation from the DTM's own flat patches - is used as the starting point.
+By default (`flat_source = TRUE`), the location given by `xy` is treated as the centre of a small water body rather than an infinitely small point. Thus any immediately adjacent DTM cells at the same elevation are included in the source area. Where the extent of a real water body is known, it can instead be supplied using `waterbody` (together with `water_value`, following the same convention as the corresponding arguments to `fillsinks()`). The traced flow path then starts from the entire water body rather than an approximation based on flat areas in the DTM.
 
-The bundled `landcover` data (already loaded as `lcov` in the [Preparing a DTM for hydrological analysis] section, where classes 13 and 14 represent Saltwater and Freshwater) makes this straightforward to demonstrate on an actual lake:
+The bundled `landcover` dataset (loaded earlier as `lcov` in [Preparing a DTM for hydrological analysis], where classes 13 and 14 represent Saltwater and Freshwater, respectively) make this straightforward to demonstrate using a real lake:
+
 
 ```{r}
 xy_lake <- c(164850, 24850)

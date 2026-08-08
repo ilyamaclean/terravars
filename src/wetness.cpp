@@ -802,3 +802,314 @@ NumericMatrix flowacc_cpp(NumericMatrix& dm2, NumericMatrix& wt2, IntegerMatrix&
 
     return acc;
 }
+
+// ============================================================================================= #
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Functions used for flow path tracing ~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+// ============================================================================================= #
+// flowpath_cpp(): traces a steepest-descent downslope path from each of a
+// set of starting ("source") cells -- the same steepest-descent rule
+// flowacc_cpp()'s own method 0 ("d8") routes with (diagonal drop divided
+// by sqrt(2) before comparing to an orthogonal drop, so a diagonal
+// neighbour only wins if it's genuinely steeper, not just farther away),
+// reusing this file's own FA_DI/FA_DJ neighbour-offset tables (even
+// indices = the 4 cardinal directions, used alone for d4; all 8 used for
+// d8). Deciding *which* cells are sources (the point itself; same-
+// elevation neighbours; a whole land-cover-delineated water body) is done
+// entirely on the R side (flowpath()), which can lean on terra for the
+// water-body case -- this function only ever traces from whatever source
+// list it's handed.
+//
+// Every source cell is marked 2, then traced separately; every other cell
+// any of those traces passes through is marked 1. A trace stops as soon
+// as it reaches a cell already marked (already covered by another
+// source's route down -- the rest of the way is already known), an edge,
+// an NA cell, or a genuine pit (no strictly lower neighbour).
+//
+// dm                 - elevation matrix, NA (R's NA_real_, i.e. an
+//                       ordinary NaN once passed to C++ -- checked with
+//                       std::isnan(), matching this package's usual
+//                       convention for a plain elevation matrix)
+//                       representing no-data.
+// src_rows/src_cols  - 0-based row/col of every source cell (already
+//                       validated as in-bounds and non-NA on the R side).
+// d8                 - TRUE: 8-neighbour search; FALSE: 4-neighbour (only
+//                       the cardinal directions).
+// ------------------------------------------------------------
+// [[Rcpp::export]]
+IntegerMatrix flowpath_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8) {
+    int rows = dm.nrow();
+    int cols = dm.ncol();
+    int nk = d8 ? 8 : 4;
+
+    IntegerMatrix out(rows, cols);
+    std::fill(out.begin(), out.end(), 0);
+
+    // Traces a single steepest-descent path starting at (row, col) --
+    // (row, col) itself is assumed already marked by the caller.
+    auto trace = [&](int row, int col) {
+        int i = row, j = col;
+        while (true) {
+            double d0 = dm(i, j);
+            double best_slope = 0.0; // any real strictly-downhill slope is > 0
+            int best_i = -1, best_j = -1;
+            for (int kk = 0; kk < nk; ++kk) {
+                int k = d8 ? kk : kk * 2; // d4: cardinal (even-index) offsets only
+                int ni = i + FA_DI[k], nj = j + FA_DJ[k];
+                if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) continue;
+                if (std::isnan(dm(ni, nj)) || dm(ni, nj) >= d0) continue; // not strictly lower
+                double dist  = (FA_DI[k] != 0 && FA_DJ[k] != 0) ? std::sqrt(2.0) : 1.0;
+                double slope = (d0 - dm(ni, nj)) / dist;
+                if (slope > best_slope) {
+                    best_slope = slope;
+                    best_i = ni;
+                    best_j = nj;
+                }
+            }
+            if (best_i < 0) break; // pit: no strictly lower neighbour -- path ends here
+            i = best_i;
+            j = best_j;
+            if (out(i, j) != 0) break; // merges into an already-traced route
+            out(i, j) = 1;
+        }
+    };
+
+    // Marked in a first pass, all together, before any tracing starts --
+    // so every trace below sees the *complete* source set as already
+    // claimed (2), not just whichever sources happened to be processed
+    // earlier.
+    int n_src = src_rows.size();
+    for (int s = 0; s < n_src; ++s) out(src_rows[s], src_cols[s]) = 2;
+    for (int s = 0; s < n_src; ++s) trace(src_rows[s], src_cols[s]);
+
+    return out;
+}
+
+// ------------------------------------------------------------
+// flowpath_mfd_cpp(): like flowpath_cpp(), but instead of a single
+// steepest-descent trace per source, water starting at each source cell
+// is apportioned across *every* downhill neighbour at once, split in
+// proportion to slope^FA_MFD_EXPONENT -- exactly flowacc_cpp()'s own MFD
+// weighting (method 1), just run "downhill from a fixed source" instead
+// of "uphill accumulation from every cell". Source cells start at 1.0
+// (the full amount); every cell downhill of a source ends up with
+// whatever fraction of that 1.0 actually reaches it, summed over every
+// route in -- a "water diffusion" layer rather than a single line.
+//
+// Cells are processed in strictly descending elevation order (a valid
+// topological order here, since every step in this package's flow model
+// moves to a strictly lower cell -- no cycles), so by the time a cell is
+// processed every contribution it could possibly receive from a higher
+// cell has already arrived. A cell with no strictly-lower neighbour (a
+// pit) or that sits at the domain edge simply keeps whatever it received
+// and passes nothing further on -- same "run fillsinks() first if you
+// want flow to continue through small artefact depressions" caveat as
+// flowpath_cpp()'s single-path trace. No flat-crossing logic is applied
+// here either, for the same reason.
+//
+// dm                - elevation matrix (NA/no-data as std::isnan(), as
+//                      elsewhere in this package).
+// src_rows/src_cols - 0-based row/col of every source cell.
+// d8                - TRUE: 8-neighbour split; FALSE: 4-neighbour (only
+//                      the cardinal directions).
+// ------------------------------------------------------------
+// [[Rcpp::export]]
+NumericMatrix flowpath_mfd_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8) {
+    int rows = dm.nrow();
+    int cols = dm.ncol();
+    int nk = d8 ? 8 : 4;
+
+    NumericMatrix val(rows, cols);
+    std::fill(val.begin(), val.end(), 0.0);
+
+    int n_src = src_rows.size();
+    for (int s = 0; s < n_src; ++s) val(src_rows[s], src_cols[s]) = 1.0;
+
+    // Every real (non-NA) cell, sorted by elevation descending.
+    std::vector<int> order;
+    order.reserve(rows * cols);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            if (!std::isnan(dm(i, j))) order.push_back(i * cols + j);
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        return dm(a / cols, a % cols) > dm(b / cols, b % cols);
+    });
+
+    double w[8];
+    int wi[8], wj[8];
+    for (int idx : order) {
+        int i = idx / cols, j = idx % cols;
+        double v = val(i, j);
+        if (v <= 0.0) continue; // nothing arrived here (from a source or otherwise) -- nothing to pass on
+        double d0 = dm(i, j);
+
+        int nc = 0;
+        double wsum = 0.0;
+        for (int kk = 0; kk < nk; ++kk) {
+            int k = d8 ? kk : kk * 2;
+            int ni = i + FA_DI[k], nj = j + FA_DJ[k];
+            if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) continue;
+            if (std::isnan(dm(ni, nj)) || dm(ni, nj) >= d0) continue; // not strictly lower
+            double dist  = (FA_DI[k] != 0 && FA_DJ[k] != 0) ? std::sqrt(2.0) : 1.0;
+            double slope = (d0 - dm(ni, nj)) / dist;
+            double wk = std::pow(slope, FA_MFD_EXPONENT);
+            wi[nc] = ni; wj[nc] = nj; w[nc] = wk; wsum += wk;
+            ++nc;
+        }
+        if (nc == 0) continue; // pit or edge -- water is lost here, nothing propagates further
+
+        for (int t = 0; t < nc; ++t)
+            val(wi[t], wj[t]) += v * (w[t] / wsum);
+    }
+
+    // Safety net: force every source cell back to exactly 1 (in the
+    // ordinary case -- disjoint sources sharing the same elevation, as
+    // both flowpath()'s same-elevation-neighbour and waterbody source
+    // selection guarantee -- no source can ever be strictly downhill of
+    // another, so this is a no-op; kept only to guarantee the "source
+    // cell(s) = 1" contract exactly even if that assumption is ever
+    // violated by a future source-selection option) and cap every other
+    // cell at 1 (rounding at the edge of the domain could otherwise push
+    // a value fractionally above 1).
+    for (int s = 0; s < n_src; ++s) val(src_rows[s], src_cols[s]) = 1.0;
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            if (val(i, j) > 1.0) val(i, j) = 1.0;
+
+    return val;
+}
+
+// ------------------------------------------------------------
+// flowpath_up_cpp(): the "upstream walk" -- literally flowpath_cpp() with
+// the descent comparison flipped, tracing a single steepest-ASCENT path
+// from each source cell instead of steepest-descent. Not a hydrological
+// contributing-area calculation (that's flowpath_mfd_up_cpp() below) --
+// just one representative line running uphill from the point, the same
+// way flowpath_cpp() traces one representative line running downhill.
+// Ends at a local peak/ridge (no strictly higher neighbour), the domain
+// edge, an NA cell, or a cell already reached by another source's walk.
+// ------------------------------------------------------------
+// [[Rcpp::export]]
+IntegerMatrix flowpath_up_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8) {
+    int rows = dm.nrow();
+    int cols = dm.ncol();
+    int nk = d8 ? 8 : 4;
+
+    IntegerMatrix out(rows, cols);
+    std::fill(out.begin(), out.end(), 0);
+
+    auto trace = [&](int row, int col) {
+        int i = row, j = col;
+        while (true) {
+            double d0 = dm(i, j);
+            double best_slope = 0.0; // any real strictly-uphill slope is > 0
+            int best_i = -1, best_j = -1;
+            for (int kk = 0; kk < nk; ++kk) {
+                int k = d8 ? kk : kk * 2;
+                int ni = i + FA_DI[k], nj = j + FA_DJ[k];
+                if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) continue;
+                if (std::isnan(dm(ni, nj)) || dm(ni, nj) <= d0) continue; // not strictly higher
+                double dist  = (FA_DI[k] != 0 && FA_DJ[k] != 0) ? std::sqrt(2.0) : 1.0;
+                double slope = (dm(ni, nj) - d0) / dist;
+                if (slope > best_slope) {
+                    best_slope = slope;
+                    best_i = ni;
+                    best_j = nj;
+                }
+            }
+            if (best_i < 0) break; // local peak/ridge -- walk ends here
+            i = best_i;
+            j = best_j;
+            if (out(i, j) != 0) break; // merges into an already-walked route
+            out(i, j) = 1;
+        }
+    };
+
+    int n_src = src_rows.size();
+    for (int s = 0; s < n_src; ++s) out(src_rows[s], src_cols[s]) = 2;
+    for (int s = 0; s < n_src; ++s) trace(src_rows[s], src_cols[s]);
+
+    return out;
+}
+
+// ------------------------------------------------------------
+// flowpath_mfd_up_cpp(): the full upstream contributing area, graded by
+// how much of each cell's own water actually reaches the source/target --
+// e.g. "pollution turned up at this point; which upslope cells could it
+// plausibly have come from, and how much of a role did each play?" Exact
+// reverse of flowpath_mfd_cpp(): same slope^FA_MFD_EXPONENT downhill
+// split at every cell, but instead of *pushing* a source's value forward
+// onto its downhill neighbours, each cell's own "influence" (fraction of
+// its water that ends up at the target) is *pulled* from the influence
+// values of its own downhill neighbours -- influence(x) = sum over x's
+// downhill neighbours y of share(x -> y) * influence(y).
+//
+// Solved in a single pass by processing cells in strictly ASCENDING
+// elevation order this time (the reverse of flowpath_mfd_cpp()'s
+// descending order), since a cell's influence here depends on its
+// strictly LOWER downhill neighbours' influence, which must therefore
+// already be resolved. Source/target cells are fixed at 1 throughout (not
+// recomputed from their own downhill split -- by definition, 100% of
+// whatever starts there is already "at" the target).
+// ------------------------------------------------------------
+// [[Rcpp::export]]
+NumericMatrix flowpath_mfd_up_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8) {
+    int rows = dm.nrow();
+    int cols = dm.ncol();
+    int nk = d8 ? 8 : 4;
+
+    NumericMatrix val(rows, cols);
+    std::fill(val.begin(), val.end(), 0.0);
+
+    LogicalMatrix is_src(rows, cols);
+    std::fill(is_src.begin(), is_src.end(), false);
+    int n_src = src_rows.size();
+    for (int s = 0; s < n_src; ++s) {
+        val(src_rows[s], src_cols[s]) = 1.0;
+        is_src(src_rows[s], src_cols[s]) = true;
+    }
+
+    // Every real (non-NA) cell, sorted by elevation ascending.
+    std::vector<int> order;
+    order.reserve(rows * cols);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            if (!std::isnan(dm(i, j))) order.push_back(i * cols + j);
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        return dm(a / cols, a % cols) < dm(b / cols, b % cols);
+    });
+
+    double w[8];
+    int wi[8], wj[8];
+    for (int idx : order) {
+        int i = idx / cols, j = idx % cols;
+        if (is_src(i, j)) continue; // fixed at 1 -- not recomputed
+
+        double d0 = dm(i, j);
+        int nc = 0;
+        double wsum = 0.0;
+        for (int kk = 0; kk < nk; ++kk) {
+            int k = d8 ? kk : kk * 2;
+            int ni = i + FA_DI[k], nj = j + FA_DJ[k];
+            if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) continue;
+            if (std::isnan(dm(ni, nj)) || dm(ni, nj) >= d0) continue; // not strictly lower
+            double dist  = (FA_DI[k] != 0 && FA_DJ[k] != 0) ? std::sqrt(2.0) : 1.0;
+            double slope = (d0 - dm(ni, nj)) / dist;
+            double wk = std::pow(slope, FA_MFD_EXPONENT);
+            wi[nc] = ni; wj[nc] = nj; w[nc] = wk; wsum += wk;
+            ++nc;
+        }
+        if (nc == 0) continue; // pit/edge: this cell's water goes nowhere -- zero influence on the target
+
+        double infl = 0.0;
+        for (int t = 0; t < nc; ++t)
+            infl += (w[t] / wsum) * val(wi[t], wj[t]);
+        val(i, j) = infl;
+    }
+
+    for (int s = 0; s < n_src; ++s) val(src_rows[s], src_cols[s]) = 1.0;
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            if (val(i, j) > 1.0) val(i, j) = 1.0;
+
+    return val;
+}

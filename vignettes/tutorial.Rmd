@@ -70,6 +70,7 @@ knitr::opts_chunk$set(
   + [Preparing a DTM for hydrological analysis](#preparing-a-dtm-for-hydrological-analysis)
   + [Flow accumulation](#flow-accumulation)
   + [Delineating and merging basins](#delineating-and-merging-basins)
+  + [Tracing a flow path](#tracing-a-flow-path)
   + [Topographic wetness index](#topographic-wetness-index)
 * [Data download](#data-download)
   + [Downloading land cover](#downloading-land-cover)
@@ -562,7 +563,7 @@ By default (`method = "steepest"`), water is assumed to flow only to the single 
 These basins are defined by topography alone and are therefore often extremely fine-grained, since even a very small ridge separates adjacent catchments. That behaviour is appropriate for modelling surface water, but can be too restrictive for other applications. Cold air, for example, readily spills across shallow topographic barriers that water cannot cross. `basinmerge()` merges neighbouring basins separated only by a shallow pour point, producing larger connected pooling units.
 
 ```{r}
-bsn_merged <- basinmerge(dtm_filled, bsn, boundary = 0.25)
+bsn_merged <- basinmerge(dtm_filled, bsn, boundary = 1)
 plot(bsn_merged, main = "Merged basins")
 ```
 
@@ -582,6 +583,23 @@ plot(log1p(acc), col = rev(map.pal("viridis")), main = "Flow accumulation (log s
 ![](images/water_img4.png)
 
 Flow accumulation usually spans several orders of magnitude, so plotting on a log scale often reveals drainage patterns much more clearly than raw values. Three routing methods are available via `method`: `"d8"` (the default), which routes all flow to the single steepest downhill neighbour; `"mfd"`, which partitions flow among all downhill neighbours in proportion to slope, producing smoother, more diffuse drainage patterns; and `"dinf"`, which routes flow between the two neighbouring cells spanning the steepest downslope direction, with the split determined by how closely each aligns with that direction. This reduces the grid-aligned artefacts of D8 while avoiding the greater lateral dispersion produced by MFD. A `weight` raster can also be supplied, allowing accumulation of quantities such as rainfall volume instead of assuming each cell contributes equally. Supplying a basin raster via `bsn` restricts flow to within each basin, preventing it from crossing basin boundaries even where local gradients would otherwise allow it.
+
+### Tracing a flow path
+
+`flowacc()` and the basin functions above describe the whole DTM at once. Sometimes the question is narrower than that: given a single point, where does the water there go, or where could it have come from? `flowpath()` answers this by tracing outward from one location rather than summarising the whole raster.
+
+```{r}
+xy <- c(168750, 15050)
+fp_down <- flowpath(dtm_filled, xy = xy, route = "mfd")
+fp_up   <- flowpath(dtm_filled, xy = xy, route = "mfd", out = "upstream")
+plot(c(fp_down, fp_up), col = rev(map.pal("viridis")), mar = c(2, 2, 2, 5))
+```
+
+![](images/water_img6.png)
+
+By default (`route = "steepest"`), a single line is traced one step at a time, always moving to whichever neighbour is the steepest way down (or, for `out = "upstream"`, the steepest way up), and stopping at a pit or ridge, the edge of the DTM, or an `NA` cell. `route = "mfd"`, used above, spreads the water across every valid neighbour at once instead, weighted by slope in the same way as `flowacc()`'s own `method = "mfd"`, giving a continuous layer rather than a single line. Combined with `out`, this gives two rather different maps: `out = "downstream"` (the default direction) shows how the point's own water diffuses outward and downhill, while `out = "upstream"` instead shows the full upslope contributing area, graded by how much of each individual cell's own water actually reaches the point. This second case is useful when the direction of interest runs the other way - a pollutant turns up at a monitoring point, say, and the question is which part of the catchment it plausibly came from, and how strongly, rather than simply which cells lie somewhere upslope.
+
+`xy` is treated as sitting at the centre of a small water body rather than a single infinitely small point: by default, any DTM cell immediately adjacent to it at exactly the same elevation is included as well (`flat_source = TRUE`). Where a real water body is known, it can be supplied directly instead via `waterbody` (and `water_value`, following the same convention as `fillsinks()`'s own arguments above), so that the whole feature - not just an approximation from the DTM's own flat patches - is used as the starting point.
 
 ### Topographic wetness index
 

@@ -400,7 +400,7 @@ fillsinks <- function(dtm, method = "fill", waterbody = NULL, water_value = NA) 
 #'
 #' @export
 #'
-#' @seealso [basindelin()], [basinmerge()], [fillsinks()], [twi()]
+#' @seealso [basindelin()], [basinmerge()], [fillsinks()], [flowpath()], [twi()]
 #'
 #' @examples
 #' \dontrun{
@@ -463,6 +463,256 @@ flowacc <- function(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = N
 
   r <- .rast(acc, dtm)
   return(r)
+}
+
+# ============================================================================ #
+# ~~~~~~~~~ Flow path tracing worker functions here ~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+# ============================================================================ #
+#' Trace a flow path
+#'
+#' Follows water step by step from a single point - either downhill
+#' (`out = "downstream"`, default: where the point's own water goes) or
+#' uphill (`out = "upstream"`: where the water arriving at the point could
+#' have come from) - always moving to whichever neighbouring cell is the
+#' steepest way down (or up), until it reaches a pit or ridge, the edge of
+#' `dtm`, or an `NA` cell. `route` offers a second option in either
+#' direction: instead of a single representative line, water is
+#' apportioned across every valid neighbour at once, weighted by slope,
+#' giving a continuous layer rather than one traced line. Complements
+#' [flowacc()], which looks upslope in aggregate (how much area drains
+#' *through* every cell of a whole DTM) by instead working outward from
+#' one fixed point, in either direction.
+#'
+#' @details
+#' **Neighbourhood** (`method`): at every step, the next cell is whichever
+#' neighbour - `"d8"` (default): any of the 8 surrounding cells; `"d4"`:
+#' only the 4 orthogonal neighbours - is the steepest way down (or up, for
+#' `out = "upstream"`) from the current cell. This is the same
+#' steepest-descent rule [flowacc()]'s own `method = "d8"` routes with: a
+#' diagonal neighbour's elevation drop (or rise) is divided by
+#' \eqn{\sqrt{2}} before comparing to an orthogonal neighbour's, since it
+#' sits farther away, so it only wins if it's genuinely steeper, not just
+#' higher or lower.
+#'
+#' **Routing** (`route`): `"steepest"` (default) follows a single line,
+#' one step at a time, ending as soon as no neighbour is strictly lower
+#' (or, for `out = "upstream"`, strictly higher - a ridge or local peak)
+#' than the current cell, the search reaches the edge of `dtm`, or it
+#' reaches an `NA` cell. Run [fillsinks()] first if you want a downstream
+#' trace to continue through small artefact depressions rather than
+#' stopping dead at every one. `"mfd"` instead spreads the water across
+#' every valid neighbour at once, in proportion to
+#' \eqn{\text{slope}^{1.1}} - the same weighting [flowacc()]'s own
+#' `method = "mfd"` uses - rather than committing to a single line: for
+#' `out = "downstream"` this gives a diffusion-like layer showing how much
+#' of the point's water reaches each downstream cell; for
+#' `out = "upstream"` it instead gives the full upslope contributing area,
+#' graded by how much of *each individual upslope cell's* water actually
+#' reaches the point, rather than a flat yes/no catchment boundary - e.g.
+#' a pollutant turns up at a monitoring point and you want to know how
+#' plausible each part of the upslope area is as the source.
+#'
+#' **Value scheme:** `route = "steepest"` returns `2` for the point itself
+#' (see `flat_source`/`waterbody` below - more than one cell can count as
+#' "the point"), `1` for every other traced cell, `0` elsewhere.
+#' `route = "mfd"` instead returns `1` for the point itself and a value
+#' between 0 and 1 everywhere else (the diffused/contributing fraction) -
+#' `2` would sit oddly on an otherwise continuous 0-1 scale, so the point
+#' is reported as `1` (all of the water) instead.
+#'
+#' **Treating the point as a small water body** (`flat_source`): by
+#' default (`TRUE`), `xy` is treated as sitting at the centre of a small,
+#' flat water body rather than a single infinitely small point: any cell
+#' immediately adjacent to it (again, using `method`'s neighbourhood - 8
+#' or 4 cells) that shares its exact elevation is treated the same way -
+#' included in the source, and its own path/contribution traced too. Set
+#' `flat_source = FALSE` to use `xy`'s own cell alone instead. Multiple
+#' source paths/diffusions can converge onto the same route; for
+#' `route = "steepest"`, once one reaches a cell already reached by
+#' another, tracing stops there rather than retracing the rest of the
+#' route.
+#'
+#' **A real water body instead** (`waterbody`, `water_value`): a rougher
+#' but more principled alternative to `flat_source`'s same-elevation
+#' guess - supply an actual land-cover (or other) raster identifying real
+#' water bodies, on the same grid as `dtm`, and the *whole* connected
+#' water body (8-connectivity) containing `xy` is used as the source
+#' instead of `flat_source`'s same-elevation neighbours (which is then
+#' ignored, whatever it's set to - there's no reason to supply
+#' `waterbody` otherwise). Follows the same convention as
+#' [fillsinks()]'s own `waterbody`/`water_value`: `water_value = NA`
+#' (default) treats `NA` cells in `waterbody` as water; supply one or
+#' more explicit value(s) instead if `waterbody` marks water with a real
+#' code. A warning is issued, and a single-cell source used instead, if
+#' `xy` doesn't actually fall on a `waterbody` cell.
+#'
+#' @param dtm A `SpatRaster` of elevation values (metres).
+#' @param xy Numeric vector of length 2, `c(x, y)`, the coordinates of the
+#'   point in `dtm`'s own coordinate reference system. Must fall within
+#'   `dtm`'s extent, on a non-`NA` cell.
+#' @param method Character. `"d8"` (default): the path/spread may move to
+#'   any of the 8 surrounding cells. `"d4"`: only the 4 orthogonal
+#'   (N/S/E/W) neighbours are considered.
+#' @param route Character. `"steepest"` (default): a single representative
+#'   line, one step at a time. `"mfd"`: spread across every valid
+#'   neighbour at once, weighted by slope - see Details.
+#' @param out Character. `"downstream"` (default): trace where the
+#'   point's own water goes. `"upstream"`: trace where the water arriving
+#'   at the point could have come from - see Details.
+#' @param flat_source Logical. `TRUE` (default): also treat any
+#'   same-elevation cell immediately adjacent to `xy` as part of the
+#'   source (a rough flat-water-body approximation - see Details).
+#'   `FALSE`: `xy`'s own cell only. Ignored whenever `waterbody` is
+#'   supplied (the water body it identifies is used instead).
+#' @param waterbody Optional `SpatRaster`, on the same grid as `dtm`,
+#'   identifying real water bodies - see Details. `NULL` (default): no
+#'   water body raster; `flat_source` (or `xy`'s own cell alone) is used
+#'   instead.
+#' @param water_value Which value(s) in `waterbody` mark a cell as water.
+#'   Default `NA`: cells where `waterbody` is `NA` count as water,
+#'   matching [fillsinks()]'s own `waterbody`/`water_value` convention.
+#'   Supply one or more explicit values instead if `waterbody` uses a
+#'   different convention. Ignored if `waterbody` isn't supplied.
+#'
+#' @return A `SpatRaster` on the same grid as `dtm`, named
+#'   `flowpath_<out>_<route>_<method>`; see "Value scheme" above for what
+#'   the cell values themselves mean. Masked to `dtm`'s own `NA` pattern
+#'   (`NA` wherever `dtm` is `NA`).
+#' @export
+#'
+#' @seealso [flowacc()], [fillsinks()], [twi()]
+#'
+#' @examples
+#' \dontrun{
+#' library(terra)
+#' dtm <- rast(dtm100m)
+#' dtm_filled <- fillsinks(dtm)
+#'
+#' # Where does the water at this point go?
+#' fp <- flowpath(dtm_filled, xy = c(170000, 12000))
+#' plot(fp)
+#'
+#' # Same, but spread across every downhill neighbour rather than a single line
+#' fp_mfd <- flowpath(dtm_filled, xy = c(170000, 12000), route = "mfd")
+#' plot(fp_mfd)
+#'
+#' # Where could the water at this point have come from? e.g. tracing a
+#' # pollutant detected at a monitoring point back to its plausible source area
+#' fp_up <- flowpath(dtm_filled, xy = c(170000, 12000), route = "mfd", out = "upstream")
+#' plot(fp_up)
+#'
+#' # Restrict to orthogonal (rook's-case) neighbours only
+#' fp4 <- flowpath(dtm_filled, xy = c(170000, 12000), method = "d4")
+#'
+#' # Use an actual water body mask instead of the same-elevation guess
+#' lc <- rast(landcover)   # bundled land cover data (see ?landcover)
+#' fp_wb <- flowpath(dtm_filled, xy = c(170000, 12000), waterbody = lc,
+#'                    water_value = c(13, 14))   # 13 = Saltwater, 14 = Freshwater
+#' }
+flowpath <- function(dtm, xy, method = c("d8", "d4"), route = c("steepest", "mfd"),
+                      out = c("downstream", "upstream"),
+                      flat_source = TRUE, waterbody = NULL, water_value = NA) {
+  stopifnot(inherits(dtm, "SpatRaster"))
+  method <- match.arg(method)
+  route  <- match.arg(route)
+  out    <- match.arg(out)
+  stopifnot(is.numeric(xy), length(xy) == 2L, all(is.finite(xy)))
+  stopifnot(is.logical(flat_source), length(flat_source) == 1L, !is.na(flat_source))
+
+  cell <- terra::cellFromXY(dtm, matrix(xy, ncol = 2))
+  if (anyNA(cell))
+    stop("'xy' does not fall within 'dtm's extent.", call. = FALSE)
+
+  dm  <- .is(dtm)
+  row <- terra::rowFromCell(dtm, cell)
+  col <- terra::colFromCell(dtm, cell)
+  if (is.na(dm[row, col]))
+    stop("'xy' falls on an NA cell of 'dtm'.", call. = FALSE)
+
+  # Neighbour offsets mirroring flowpath_cpp()'s own FA_DI/FA_DJ convention
+  # (E, NE, N, NW, W, SW, S, SE); d4 keeps only the 4 cardinal (even-index)
+  # ones. Used below to find the start cell's own same-elevation neighbours
+  # -- the only piece of source-cell selection simple enough to just do
+  # directly in R rather than handing off to terra.
+  off_dr <- c(0, -1, -1, -1, 0, 1, 1, 1)
+  off_dc <- c(1, 1, 0, -1, -1, -1, 0, 1)
+  if (method == "d4") {
+    off_dr <- off_dr[c(1, 3, 5, 7)]
+    off_dc <- off_dc[c(1, 3, 5, 7)]
+  }
+
+  src_row <- row
+  src_col <- col
+
+  use_waterbody <- !is.null(waterbody)
+  if (use_waterbody) {
+    # Same water-mask convention as fillsinks()'s own waterbody/water_value:
+    # NA (default) and/or explicit value(s) mark a cell as water.
+    stopifnot(inherits(waterbody, "SpatRaster"))
+    .check_compatible(dtm, waterbody, "dtm", "waterbody")
+
+    na_flag  <- is.na(water_value)
+    explicit <- water_value[!na_flag]
+    wmask <- NULL
+    if (any(na_flag)) wmask <- is.na(waterbody)
+    for (v in explicit) {
+      m <- !is.na(waterbody) & (waterbody == v)
+      wmask <- if (is.null(wmask)) m else (wmask | m)
+    }
+
+    wm <- .is(wmask)
+    if (isTRUE(wm[row, col])) {
+      # Whole connected water body (8-connectivity, matching fillsinks()'s
+      # own waterbody handling) containing the start cell becomes the
+      # source set -- every cell of it, not just those immediately
+      # touching the point.
+      wmask     <- terra::ifel(wmask, 1, NA)
+      patches_r <- terra::patches(wmask, directions = 8)
+      pm  <- .is(patches_r)
+      pid <- pm[row, col]
+      hit <- which(pm == pid, arr.ind = TRUE)
+      src_row <- hit[, 1]
+      src_col <- hit[, 2]
+    } else {
+      warning("'xy' does not fall on a 'waterbody' cell; treating it as a ",
+              "single-cell source instead.", call. = FALSE)
+    }
+  } else if (isTRUE(flat_source)) {
+    d0 <- dm[row, col]
+    for (k in seq_along(off_dr)) {
+      nr <- row + off_dr[k]
+      nc <- col + off_dc[k]
+      if (nr < 1 || nr > nrow(dm) || nc < 1 || nc > ncol(dm)) next
+      if (is.na(dm[nr, nc]) || dm[nr, nc] != d0) next
+      src_row <- c(src_row, nr)
+      src_col <- c(src_col, nc)
+    }
+  }
+
+  src_row0 <- as.integer(src_row - 1L)
+  src_col0 <- as.integer(src_col - 1L)
+  d8 <- method == "d8"
+
+  # out = "downstream" (default): where the point's own water goes.
+  # out = "upstream": where the point's water could have come from --
+  # route = "steepest" traces a single representative line uphill (the
+  # exact mirror of the downstream steepest walk, nothing more); route =
+  # "mfd" instead computes the full contributing catchment, graded by how
+  # much of each upslope cell's own water actually reaches the point (e.g.
+  # diagnosing where a pollutant detected at the point could have come
+  # from) -- see flowpath_mfd_up_cpp()'s own comment for how that reverse
+  # sweep works.
+  path_m <- if (out == "upstream") {
+    if (route == "mfd") flowpath_mfd_up_cpp(dm, src_row0, src_col0, d8)
+    else                 flowpath_up_cpp(dm, src_row0, src_col0, d8)
+  } else {
+    if (route == "mfd") flowpath_mfd_cpp(dm, src_row0, src_col0, d8)
+    else                 flowpath_cpp(dm, src_row0, src_col0, d8)
+  }
+
+  res <- terra::mask(.rast(path_m, dtm), dtm)
+  names(res) <- paste0("flowpath_", out, "_", route, "_", method)
+  res
 }
 
 #' Topographic wetness index
@@ -566,7 +816,7 @@ flowacc <- function(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = N
 #' @return A `SpatRaster` of TWI values.
 #' @export
 #'
-#' @seealso [flowacc()], [fillsinks()]
+#' @seealso [flowacc()], [fillsinks()], [flowpath()]
 #'
 #' @references
 #' Beven, K.J. & Kirkby, M.J. (1979). A physically based, variable contributing

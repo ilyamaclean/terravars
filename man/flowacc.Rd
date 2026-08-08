@@ -81,5 +81,5 @@ acc_by_basin <- flowacc(dtm_filled, bsn = bsn)
 }
 }
 \seealso{
-\code{\link[=basindelin]{basindelin()}}, \code{\link[=basinmerge]{basinmerge()}}, \code{\link[=fillsinks]{fillsinks()}}, \code{\link[=twi]{twi()}}
+\code{\link[=basindelin]{basindelin()}}, \code{\link[=basinmerge]{basinmerge()}}, \code{\link[=fillsinks]{fillsinks()}}, \code{\link[=flowpath]{flowpath()}}, \code{\link[=twi]{twi()}}
 }

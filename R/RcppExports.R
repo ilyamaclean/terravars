@@ -65,6 +65,22 @@ flowacc_cpp <- function(dm2, wt2, bm2, method) {
     .Call(`_terravars_flowacc_cpp`, dm2, wt2, bm2, method)
 }
 
+flowpath_cpp <- function(dm, src_rows, src_cols, d8) {
+    .Call(`_terravars_flowpath_cpp`, dm, src_rows, src_cols, d8)
+}
+
+flowpath_mfd_cpp <- function(dm, src_rows, src_cols, d8) {
+    .Call(`_terravars_flowpath_mfd_cpp`, dm, src_rows, src_cols, d8)
+}
+
+flowpath_up_cpp <- function(dm, src_rows, src_cols, d8) {
+    .Call(`_terravars_flowpath_up_cpp`, dm, src_rows, src_cols, d8)
+}
+
+flowpath_mfd_up_cpp <- function(dm, src_rows, src_cols, d8) {
+    .Call(`_terravars_flowpath_mfd_up_cpp`, dm, src_rows, src_cols, d8)
+}
+
 coastal_exposure_cpp <- function(lsm, resolution, xmin, ymax, s, direction, masks, mask_reso, mask_xmin, mask_xmax, mask_ymin, mask_ymax, jitter_deg = 0.0) {
     .Call(`_terravars_coastal_exposure_cpp`, lsm, resolution, xmin, ymax, s, direction, masks, mask_reso, mask_xmin, mask_xmax, mask_ymin, mask_ymax, jitter_deg)
 }

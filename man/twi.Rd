@@ -157,5 +157,5 @@ terrain analysis and climate regionalisation. \emph{SAGA - Analysis and Modellin
 Applications}, 115, 13-28.
 }
 \seealso{
-\code{\link[=flowacc]{flowacc()}}, \code{\link[=fillsinks]{fillsinks()}}
+\code{\link[=flowacc]{flowacc()}}, \code{\link[=fillsinks]{fillsinks()}}, \code{\link[=flowpath]{flowpath()}}
 }

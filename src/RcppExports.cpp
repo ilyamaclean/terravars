@@ -261,6 +261,62 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// flowpath_cpp
+IntegerMatrix flowpath_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8);
+RcppExport SEXP _terravars_flowpath_cpp(SEXP dmSEXP, SEXP src_rowsSEXP, SEXP src_colsSEXP, SEXP d8SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix& >::type dm(dmSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_rows(src_rowsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_cols(src_colsSEXP);
+    Rcpp::traits::input_parameter< bool >::type d8(d8SEXP);
+    rcpp_result_gen = Rcpp::wrap(flowpath_cpp(dm, src_rows, src_cols, d8));
+    return rcpp_result_gen;
+END_RCPP
+}
+// flowpath_mfd_cpp
+NumericMatrix flowpath_mfd_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8);
+RcppExport SEXP _terravars_flowpath_mfd_cpp(SEXP dmSEXP, SEXP src_rowsSEXP, SEXP src_colsSEXP, SEXP d8SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix& >::type dm(dmSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_rows(src_rowsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_cols(src_colsSEXP);
+    Rcpp::traits::input_parameter< bool >::type d8(d8SEXP);
+    rcpp_result_gen = Rcpp::wrap(flowpath_mfd_cpp(dm, src_rows, src_cols, d8));
+    return rcpp_result_gen;
+END_RCPP
+}
+// flowpath_up_cpp
+IntegerMatrix flowpath_up_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8);
+RcppExport SEXP _terravars_flowpath_up_cpp(SEXP dmSEXP, SEXP src_rowsSEXP, SEXP src_colsSEXP, SEXP d8SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix& >::type dm(dmSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_rows(src_rowsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_cols(src_colsSEXP);
+    Rcpp::traits::input_parameter< bool >::type d8(d8SEXP);
+    rcpp_result_gen = Rcpp::wrap(flowpath_up_cpp(dm, src_rows, src_cols, d8));
+    return rcpp_result_gen;
+END_RCPP
+}
+// flowpath_mfd_up_cpp
+NumericMatrix flowpath_mfd_up_cpp(NumericMatrix& dm, IntegerVector src_rows, IntegerVector src_cols, bool d8);
+RcppExport SEXP _terravars_flowpath_mfd_up_cpp(SEXP dmSEXP, SEXP src_rowsSEXP, SEXP src_colsSEXP, SEXP d8SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix& >::type dm(dmSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_rows(src_rowsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type src_cols(src_colsSEXP);
+    Rcpp::traits::input_parameter< bool >::type d8(d8SEXP);
+    rcpp_result_gen = Rcpp::wrap(flowpath_mfd_up_cpp(dm, src_rows, src_cols, d8));
+    return rcpp_result_gen;
+END_RCPP
+}
 // coastal_exposure_cpp
 Rcpp::NumericMatrix coastal_exposure_cpp(Rcpp::NumericMatrix lsm, double resolution, double xmin, double ymax, Rcpp::NumericVector s, double direction, Rcpp::List masks, Rcpp::NumericVector mask_reso, Rcpp::NumericVector mask_xmin, Rcpp::NumericVector mask_xmax, Rcpp::NumericVector mask_ymin, Rcpp::NumericVector mask_ymax, double jitter_deg);
 RcppExport SEXP _terravars_coastal_exposure_cpp(SEXP lsmSEXP, SEXP resolutionSEXP, SEXP xminSEXP, SEXP ymaxSEXP, SEXP sSEXP, SEXP directionSEXP, SEXP masksSEXP, SEXP mask_resoSEXP, SEXP mask_xminSEXP, SEXP mask_xmaxSEXP, SEXP mask_yminSEXP, SEXP mask_ymaxSEXP, SEXP jitter_degSEXP) {
@@ -302,6 +358,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_terravars_basinmerge_cpp", (DL_FUNC) &_terravars_basinmerge_cpp, 3},
     {"_terravars_fillsinks_cpp", (DL_FUNC) &_terravars_fillsinks_cpp, 2},
     {"_terravars_flowacc_cpp", (DL_FUNC) &_terravars_flowacc_cpp, 4},
+    {"_terravars_flowpath_cpp", (DL_FUNC) &_terravars_flowpath_cpp, 4},
+    {"_terravars_flowpath_mfd_cpp", (DL_FUNC) &_terravars_flowpath_mfd_cpp, 4},
+    {"_terravars_flowpath_up_cpp", (DL_FUNC) &_terravars_flowpath_up_cpp, 4},
+    {"_terravars_flowpath_mfd_up_cpp", (DL_FUNC) &_terravars_flowpath_mfd_up_cpp, 4},
     {"_terravars_coastal_exposure_cpp", (DL_FUNC) &_terravars_coastal_exposure_cpp, 13},
     {NULL, NULL, 0}
 };

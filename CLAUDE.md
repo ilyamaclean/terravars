@@ -52,6 +52,7 @@ Each `R/*.R` file has a matching `src/*.cpp` file; the R side validates argument
 - **Optional per-cell parameters.** Leaf/canopy parameters (`x`, `lref`, `ltra`, `gref`, etc.) accept a scalar, `NA`/`NULL` (default), or a `SpatRaster`; resolved to a matrix via `.to_mat()` (`R/utils.R`). `lref + ltra < 1` is enforced by `.check_leaf_optics()` wherever both apply.
 - **Two calculation "speed modes"** recur across `horizon()`, `solarindex(shade=)`, and `skyview()`: `nstep = 0` (default) exhaustively checks every intervening cell out to the raster edge; `nstep > 0` switches to a sparser, faster quadratically-spaced search. Ray-marched 3D vegetation paths (`hgt` argument to `solarindex()`/`skyview()`, and `canopy3d()`) warn via `.warn_ray_march_cost()` when the estimated runtime (raster size × total sky directions) looks large.
 - **`pai_horiz`** (`solarindex()`, `twostream()`) declares whether a supplied plant-area-index raster is per unit horizontal or sloped ground area; the two differ by `cos(slope)` and are converted internally so results are physically consistent regardless of convention.
+- **`route`** names the flow-routing algorithm choice consistently across `flowacc()` (`"d8"`/`"mfd"`/`"dinf"`), `flowpath()` (`"steepest"`/`"mfd"`), and `twi()`'s internal `flowacc()` call — don't reintroduce `method` for this; `flowpath()`'s own `method` argument is unrelated (d8/d4 neighbourhood search), as is `twi()`'s own `method` (which TWI formula to use).
 
 ### Tests
 

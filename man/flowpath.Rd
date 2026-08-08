@@ -76,7 +76,7 @@ one fixed point, in either direction.
 neighbour - \code{"d8"} (default): any of the 8 surrounding cells; \code{"d4"}:
 only the 4 orthogonal neighbours - is the steepest way down (or up, for
 \code{out = "upstream"}) from the current cell. This is the same
-steepest-descent rule \code{\link[=flowacc]{flowacc()}}'s own \code{method = "d8"} routes with: a
+steepest-descent rule \code{\link[=flowacc]{flowacc()}}'s own \code{route = "d8"} routes with: a
 diagonal neighbour's elevation drop (or rise) is divided by
 \eqn{\sqrt{2}} before comparing to an orthogonal neighbour's, since it
 sits farther away, so it only wins if it's genuinely steeper, not just
@@ -91,7 +91,7 @@ trace to continue through small artefact depressions rather than
 stopping dead at every one. \code{"mfd"} instead spreads the water across
 every valid neighbour at once, in proportion to
 \eqn{\text{slope}^{1.1}} - the same weighting \code{\link[=flowacc]{flowacc()}}'s own
-\code{method = "mfd"} uses - rather than committing to a single line: for
+\code{route = "mfd"} uses - rather than committing to a single line: for
 \code{out = "downstream"} this gives a diffusion-like layer showing how much
 of the point's water reaches each downstream cell; for
 \code{out = "upstream"} it instead gives the full upslope contributing area,

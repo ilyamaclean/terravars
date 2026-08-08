@@ -4,12 +4,12 @@
 \alias{flowacc}
 \title{Flow accumulation}
 \usage{
-flowacc(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = NULL)
+flowacc(dtm, route = c("d8", "mfd", "dinf"), weight = NULL, bsn = NULL)
 }
 \arguments{
 \item{dtm}{A \code{SpatRaster} of elevation values (metres).}
 
-\item{method}{Character. \code{"d8"} (default): each cell's entire flow
+\item{route}{Character. \code{"d8"} (default): each cell's entire flow
 goes to its single steepest downhill neighbour. \code{"mfd"}: flow splits
 across every downhill neighbour, weighted by slope raised to a fixed
 convergence exponent (1.1, following Freeman 1991) -- not exposed as
@@ -72,7 +72,7 @@ point without ever needing to alter any elevations.
 library(terra)
 dtm <- rast(dtm100m)
 dtm_filled <- fillsinks(dtm)
-acc <- flowacc(dtm_filled, method = "mfd")
+acc <- flowacc(dtm_filled, route = "mfd")
 plot(acc)
 
 # restrict accumulation to stay within each delineated basin

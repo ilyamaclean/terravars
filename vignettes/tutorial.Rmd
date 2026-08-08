@@ -576,13 +576,13 @@ The `boundary` argument (0.25 m by default) controls how shallow the separating 
 `flowacc()` calculates the amount of upslope area draining through each cell. High values identify where water converges into streams and rivers, whereas low values occur on ridges and other areas contributing little or no runoff.
 
 ```{r}
-acc <- flowacc(dtm_filled, method = "mfd")
+acc <- flowacc(dtm_filled, route = "mfd")
 plot(log1p(acc), col = rev(map.pal("viridis")), main = "Flow accumulation (log scale)")
 ```
 
 ![](images/water_img4.png)
 
-Flow accumulation usually spans several orders of magnitude, so plotting on a log scale often reveals drainage patterns much more clearly than raw values. Three routing methods are available via `method`: `"d8"` (the default), which routes all flow to the single steepest downhill neighbour; `"mfd"`, which partitions flow among all downhill neighbours in proportion to slope, producing smoother, more diffuse drainage patterns; and `"dinf"`, which routes flow between the two neighbouring cells spanning the steepest downslope direction, with the split determined by how closely each aligns with that direction. This reduces the grid-aligned artefacts of D8 while avoiding the greater lateral dispersion produced by MFD. A `weight` raster can also be supplied, allowing accumulation of quantities such as rainfall volume instead of assuming each cell contributes equally. Supplying a basin raster via `bsn` restricts flow to within each basin, preventing it from crossing basin boundaries even where local gradients would otherwise allow it.
+Flow accumulation usually spans several orders of magnitude, so plotting on a log scale often reveals drainage patterns much more clearly than raw values. Three routing methods are available via `route`: `"d8"` (the default), which routes all flow to the single steepest downhill neighbour; `"mfd"`, which partitions flow among all downhill neighbours in proportion to slope, producing smoother, more diffuse drainage patterns; and `"dinf"`, which routes flow between the two neighbouring cells spanning the steepest downslope direction, with the split determined by how closely each aligns with that direction. This reduces the grid-aligned artefacts of D8 while avoiding the greater lateral dispersion produced by MFD. A `weight` raster can also be supplied, allowing accumulation of quantities such as rainfall volume instead of assuming each cell contributes equally. Supplying a basin raster via `bsn` restricts flow to within each basin, preventing it from crossing basin boundaries even where local gradients would otherwise allow it.
 
 ### Tracing a flow path
 
@@ -608,7 +608,7 @@ points(pt, pch = 21, bg = "red")
 
 By default `(route = "steepest")`, `flowpath()` follows a single route one cell at a time, always moving to the neighbouring cell with the steepest downhill gradient (or, when `out = "upstream"`, the steepest uphill gradient). Tracing stops when it reaches a pit or ridge, the edge of the DTM, or an NA cell. The default `out = "downstream"` traces the path that water from the chosen location would follow, whereas `out = "upstream"` traces the route by which water could have reached that point. The neighbourhood searched at each step is controlled by the `method` argument, as in `flowacc()`: `"d8"` (the default) considers all eight neighbouring cells, whereas `"d4"` restricts the search to the four orthogonal neighbours.
 
-A single flow line is not always the most informative result, however, particularly when tracing upstream, where the contributing area is often of greater interest than any one route. Setting `route = "mfd"` distributes flow among all valid neighbouring cells, with weights proportional to slope using the same multiple-flow-direction algorithm as `flowacc(method = "mfd")`.
+A single flow line is not always the most informative result, however, particularly when tracing upstream, where the contributing area is often of greater interest than any one route. Setting `route = "mfd"` distributes flow among all valid neighbouring cells, with weights proportional to slope using the same multiple-flow-direction algorithm as `flowacc(route = "mfd")`.
 
 ```{r}
 fp_down_mfd <- flowpath(dtm_filled, xy = xy, route = "mfd")

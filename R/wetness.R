@@ -365,7 +365,7 @@ fillsinks <- function(dtm, method = "fill", waterbody = NULL, water_value = NA,
 #' has drained into it, with nothing propagating further downhill).
 #'
 #' @param dtm A `SpatRaster` of elevation values (metres).
-#' @param method Character. `"d8"` (default): each cell's entire flow
+#' @param route Character. `"d8"` (default): each cell's entire flow
 #'   goes to its single steepest downhill neighbour. `"mfd"`: flow splits
 #'   across every downhill neighbour, weighted by slope raised to a fixed
 #'   convergence exponent (1.1, following Freeman 1991) -- not exposed as
@@ -419,17 +419,17 @@ fillsinks <- function(dtm, method = "fill", waterbody = NULL, water_value = NA,
 #' library(terra)
 #' dtm <- rast(dtm100m)
 #' dtm_filled <- fillsinks(dtm)
-#' acc <- flowacc(dtm_filled, method = "mfd")
+#' acc <- flowacc(dtm_filled, route = "mfd")
 #' plot(acc)
 #'
 #' # restrict accumulation to stay within each delineated basin
 #' bsn <- basindelin(dtm_filled)
 #' acc_by_basin <- flowacc(dtm_filled, bsn = bsn)
 #' }
-flowacc <- function(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = NULL) {
+flowacc <- function(dtm, route = c("d8", "mfd", "dinf"), weight = NULL, bsn = NULL) {
   stopifnot(inherits(dtm, "SpatRaster"))
-  method <- match.arg(method)
-  method_code <- match(method, c("d8", "mfd", "dinf")) - 1L
+  route <- match.arg(route)
+  route_code <- match(route, c("d8", "mfd", "dinf")) - 1L
 
   dm <- .is(dtm)
   nr <- dim(dm)[1]
@@ -466,7 +466,7 @@ flowacc <- function(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = N
   wt2 <- .pad1(wt, 0)
   bm2 <- .pad1(bm, NA_integer_)
 
-  acc <- flowacc_cpp(dm2, wt2, bm2, method_code)
+  acc <- flowacc_cpp(dm2, wt2, bm2, route_code)
   dd  <- dim(acc)
   acc <- acc[2:(dd[1] - 1), 2:(dd[2] - 1)]
   if (class(acc)[1] != 'matrix') acc <- matrix(acc, ncol = nc, nrow = nr)
@@ -500,7 +500,7 @@ flowacc <- function(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = N
 #' neighbour - `"d8"` (default): any of the 8 surrounding cells; `"d4"`:
 #' only the 4 orthogonal neighbours - is the steepest way down (or up, for
 #' `out = "upstream"`) from the current cell. This is the same
-#' steepest-descent rule [flowacc()]'s own `method = "d8"` routes with: a
+#' steepest-descent rule [flowacc()]'s own `route = "d8"` routes with: a
 #' diagonal neighbour's elevation drop (or rise) is divided by
 #' \eqn{\sqrt{2}} before comparing to an orthogonal neighbour's, since it
 #' sits farther away, so it only wins if it's genuinely steeper, not just
@@ -515,7 +515,7 @@ flowacc <- function(dtm, method = c("d8", "mfd", "dinf"), weight = NULL, bsn = N
 #' stopping dead at every one. `"mfd"` instead spreads the water across
 #' every valid neighbour at once, in proportion to
 #' \eqn{\text{slope}^{1.1}} - the same weighting [flowacc()]'s own
-#' `method = "mfd"` uses - rather than committing to a single line: for
+#' `route = "mfd"` uses - rather than committing to a single line: for
 #' `out = "downstream"` this gives a diffusion-like layer showing how much
 #' of the point's water reaches each downstream cell; for
 #' `out = "upstream"` it instead gives the full upslope contributing area,
@@ -897,7 +897,7 @@ twi <- function(dtm, method = "modified", flow_acc = NULL, route = NULL,
     # per TWI `method` (see @details above for the reasoning).
     route_use <- route
     if (is.null(route_use)) route_use <- if (method == "saga") "mfd" else "d8"
-    flow_acc <- flowacc(dtm, method = route_use, weight = weight, bsn = bsn)
+    flow_acc <- flowacc(dtm, route = route_use, weight = weight, bsn = bsn)
   }
 
   fa_m  <- as.matrix(flow_acc, wide = TRUE)

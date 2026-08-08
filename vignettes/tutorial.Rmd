@@ -596,10 +596,11 @@ pt <- vect(matrix(xy, ncol = 2), crs = crs(dtm_filled))
 fp_down <- flowpath(dtm_filled, xy = xy)
 fp_up   <- flowpath(dtm_filled, xy = xy, out = "upstream")
 
+e <- ext(166000, 170000, 13000, 18000)
 par(mfrow = c(1, 2))
-plot(fp_down, col = rev(map.pal("viridis")), main = "Downstream", mar = c(2, 2, 2, 5))
+plot(crop(fp_down, e), col = rev(map.pal("viridis")), main = "Downstream", mar = c(2, 2, 2, 5))
 points(pt, pch = 21, bg = "red")
-plot(fp_up, col = rev(map.pal("viridis")), main = "Upstream", mar = c(2, 2, 2, 5))
+plot(crop(fp_up, e), col = rev(map.pal("viridis")), main = "Upstream", mar = c(2, 2, 2, 5))
 points(pt, pch = 21, bg = "red")
 ```
 
@@ -613,10 +614,11 @@ A single flow line is not always the most informative result, however, particula
 fp_down_mfd <- flowpath(dtm_filled, xy = xy, route = "mfd")
 fp_up_mfd   <- flowpath(dtm_filled, xy = xy, route = "mfd", out = "upstream")
 
+e_mfd <- ext(166000, 171000, 12000, 18500)
 par(mfrow = c(1, 2))
-plot(fp_down_mfd, col = rev(map.pal("viridis")), main = "Downstream", mar = c(2, 2, 2, 5))
+plot(crop(fp_down_mfd, e_mfd), col = rev(map.pal("viridis")), main = "Downstream", mar = c(2, 2, 2, 5))
 points(pt, pch = 21, bg = "red")
-plot(fp_up_mfd, col = rev(map.pal("viridis")), main = "Upstream", mar = c(2, 2, 2, 5))
+plot(crop(fp_up_mfd, e_mfd), col = rev(map.pal("viridis")), main = "Upstream", mar = c(2, 2, 2, 5))
 points(pt, pch = 21, bg = "red")
 ```
 
@@ -633,7 +635,8 @@ The bundled `landcover` dataset (loaded earlier as `lcov` in [Preparing a DTM fo
 xy_lake <- c(164850, 24850)
 fp_lake <- flowpath(dtm_filled, xy = xy_lake, waterbody = lcov, water_value = c(13, 14),
                      route = "mfd", out = "upstream")
-plot(fp_lake, col = rev(map.pal("viridis")), main = "Catchment of a real lake")
+e_lake <- ext(162500, 169500, 22500, 28500)
+plot(crop(fp_lake, e_lake), col = rev(map.pal("viridis")), main = "Catchment of a real lake")
 points(vect(matrix(xy_lake, ncol = 2), crs = crs(dtm_filled)), pch = 21, bg = "red")
 ```
 

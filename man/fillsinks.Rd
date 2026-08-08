@@ -4,7 +4,13 @@
 \alias{fillsinks}
 \title{Fill sinks (depressions) in a digital terrain model}
 \usage{
-fillsinks(dtm, method = "fill", waterbody = NULL, water_value = NA)
+fillsinks(
+  dtm,
+  method = "fill",
+  waterbody = NULL,
+  water_value = NA,
+  water_stat = c("min", "max")
+)
 }
 \arguments{
 \item{dtm}{A \code{SpatRaster} of elevation values (metres).}
@@ -24,12 +30,17 @@ convention elsewhere. Supply one or more explicit values instead
 (e.g. a land-cover code for open water) if \code{waterbody} uses a
 different convention; \code{NA} and explicit values can be combined in the
 same vector.}
+
+\item{water_stat}{Character. \code{"min"} (default): flatten each water body
+to the minimum \code{dtm} elevation found within it. \code{"max"}: flatten it
+to the maximum instead. Ignored if \code{waterbody} isn't supplied.}
 }
 \value{
 A \code{SpatRaster} of elevation values (metres), on the same grid
 as \code{dtm}, with every interior pit raised just enough to drain, and
 (if \code{waterbody} was supplied) every real water body flattened to its
-own minimum elevation. \code{NA} cells are left \code{NA}.
+own minimum (or, via \code{water_stat}, maximum) elevation. \code{NA} cells are
+left \code{NA}.
 }
 \description{
 Real-world DTMs are full of small spurious pits -- noise, a bridge deck
@@ -67,10 +78,11 @@ would otherwise get flattened up to whatever pour point the algorithm
 finds rather than kept at its own true water level. When \code{waterbody} is
 supplied, every connected water body it identifies (8-connected: cells
 touching only at a corner still count as one water body) is instead
-flattened to the \emph{minimum} \code{dtm} elevation found anywhere within it --
-surface-return DTMs already record the water surface reasonably well,
-and taking the min rather than the mean avoids letting noisy near-shore
-or through-water values pull the plane up -- and every cell of it is
+flattened to the \emph{minimum} (or, via \code{water_stat}, \emph{maximum}) \code{dtm}
+elevation found anywhere within it -- surface-return DTMs already
+record the water surface reasonably well, and taking the min rather
+than the mean avoids letting noisy near-shore or through-water values
+pull the plane up -- and every cell of it is
 fed into the fill as an already-resolved seed at that elevation, the
 same way an \code{NA}/sea cell or the raster edge already seeds the fill
 elsewhere. Ordinary pits everywhere else in \code{dtm} still fill exactly as
@@ -96,6 +108,9 @@ dtm_filled2 <- fillsinks(dtm, waterbody = pond_mask)
 
 # Same, but the mask uses an explicit land-cover code for water
 dtm_filled3 <- fillsinks(dtm, waterbody = landcover, water_value = 80)
+
+# Flatten each water body to its highest rather than lowest DTM value
+dtm_filled4 <- fillsinks(dtm, waterbody = pond_mask, water_stat = "max")
 }
 }
 \seealso{

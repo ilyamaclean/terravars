@@ -203,10 +203,11 @@ basinmerge <- function(dtm, bsn, boundary = 0.25) {
 #' finds rather than kept at its own true water level. When `waterbody` is
 #' supplied, every connected water body it identifies (8-connected: cells
 #' touching only at a corner still count as one water body) is instead
-#' flattened to the *minimum* `dtm` elevation found anywhere within it --
-#' surface-return DTMs already record the water surface reasonably well,
-#' and taking the min rather than the mean avoids letting noisy near-shore
-#' or through-water values pull the plane up -- and every cell of it is
+#' flattened to the *minimum* (or, via `water_stat`, *maximum*) `dtm`
+#' elevation found anywhere within it -- surface-return DTMs already
+#' record the water surface reasonably well, and taking the min rather
+#' than the mean avoids letting noisy near-shore or through-water values
+#' pull the plane up -- and every cell of it is
 #' fed into the fill as an already-resolved seed at that elevation, the
 #' same way an `NA`/sea cell or the raster edge already seeds the fill
 #' elsewhere. Ordinary pits everywhere else in `dtm` still fill exactly as
@@ -234,11 +235,15 @@ basinmerge <- function(dtm, bsn, boundary = 0.25) {
 #'   (e.g. a land-cover code for open water) if `waterbody` uses a
 #'   different convention; `NA` and explicit values can be combined in the
 #'   same vector.
+#' @param water_stat Character. `"min"` (default): flatten each water body
+#'   to the minimum `dtm` elevation found within it. `"max"`: flatten it
+#'   to the maximum instead. Ignored if `waterbody` isn't supplied.
 #'
 #' @return A `SpatRaster` of elevation values (metres), on the same grid
 #'   as `dtm`, with every interior pit raised just enough to drain, and
 #'   (if `waterbody` was supplied) every real water body flattened to its
-#'   own minimum elevation. `NA` cells are left `NA`.
+#'   own minimum (or, via `water_stat`, maximum) elevation. `NA` cells are
+#'   left `NA`.
 #' @export
 #'
 #' @seealso [basindelin()], [basinmerge()], [flowacc()]
@@ -255,9 +260,14 @@ basinmerge <- function(dtm, bsn, boundary = 0.25) {
 #'
 #' # Same, but the mask uses an explicit land-cover code for water
 #' dtm_filled3 <- fillsinks(dtm, waterbody = landcover, water_value = 80)
+#'
+#' # Flatten each water body to its highest rather than lowest DTM value
+#' dtm_filled4 <- fillsinks(dtm, waterbody = pond_mask, water_stat = "max")
 #' }
-fillsinks <- function(dtm, method = "fill", waterbody = NULL, water_value = NA) {
+fillsinks <- function(dtm, method = "fill", waterbody = NULL, water_value = NA,
+                       water_stat = c("min", "max")) {
   method <- match.arg(method, c("fill"))
+  water_stat <- match.arg(water_stat)
   dm <- .is(dtm)
   nr <- dim(dm)[1]
   nc <- dim(dm)[2]
@@ -305,24 +315,26 @@ fillsinks <- function(dtm, method = "fill", waterbody = NULL, water_value = NA) 
 
       # Label each connected water body (8-connectivity, matching every
       # other neighbourhood search in this package), then assign every
-      # cell of it the minimum dtm elevation found anywhere in that water
-      # body. Done directly on plain matrices with tapply() rather than
-      # terra::zonal()/classify() -- an earlier version used that pair
-      # instead and silently produced mostly-NA output, most likely from
-      # a zonal()/classify() column-order or value-matching mismatch that
-      # couldn't be verified without a live R session in this cloud
-      # session. tapply() on plain matrices sidesteps that uncertainty
-      # entirely: every step here is base R, fully inspectable.
+      # cell of it the min (or, via water_stat, max) dtm elevation found
+      # anywhere in that water body. Done directly on plain matrices with
+      # tapply() rather than terra::zonal()/classify() -- an earlier
+      # version used that pair instead and silently produced mostly-NA
+      # output, most likely from a zonal()/classify() column-order or
+      # value-matching mismatch that couldn't be verified without a live R
+      # session in this cloud session. tapply() on plain matrices
+      # sidesteps that uncertainty entirely: every step here is base R,
+      # fully inspectable.
       patches_r <- terra::patches(wmask, directions = 8)
       pm  <- .is(patches_r)
       dmr <- .is(dtm)
       water_idx <- !is.na(pm) & !is.na(dmr)
+      stat_fun <- if (water_stat == "max") max else min
 
       if (any(water_idx)) {
-        zmin <- tapply(dmr[water_idx], pm[water_idx], min, na.rm = TRUE)
+        zstat <- tapply(dmr[water_idx], pm[water_idx], stat_fun, na.rm = TRUE)
 
         ws <- matrix(NA_real_, nrow = nr, ncol = nc)
-        ws[water_idx] <- zmin[as.character(pm[water_idx])]
+        ws[water_idx] <- zstat[as.character(pm[water_idx])]
         wseed2[2:(nr+1),2:(nc+1)] <- ws
       }
     }
